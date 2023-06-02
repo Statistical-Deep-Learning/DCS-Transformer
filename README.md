@@ -1,6 +1,6 @@
 # DCS-ViT
 ## Requirements
-torch>=1.7
+`torch>=1.7
 
 torchvision
 
@@ -10,7 +10,7 @@ huggingface_hub
 
 safetensors>=0.2
 
-timm
+timm`
 
 ## Train Searched dcs_mobilevit_s
 `./distributed_train.sh 4 /data_dir/imagenet/ --model dcs_mobilevit_s \
