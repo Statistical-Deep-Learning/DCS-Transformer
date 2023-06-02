@@ -1,4 +1,17 @@
 # DCS-ViT
+## Requirements
+torch>=1.7
+
+torchvision
+
+pyyaml
+
+huggingface_hub
+
+safetensors>=0.2
+
+timm
+
 ## Train Searched dcs_mobilevit_s
 `./distributed_train.sh 4 /data_dir/imagenet/ --model dcs_mobilevit_s \
 -b 64 --workers 8 --pin-mem \
