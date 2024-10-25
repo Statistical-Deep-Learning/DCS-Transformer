@@ -21,7 +21,7 @@ from ._pretrained import generate_default_cfgs
 from ._registry import register_model
 import numpy as np
 
-__all__ = ['VisionTransformer']  # model_registry will add each entrypoint fn to this
+__all__ = ['DCS_VisionTransformer']  # model_registry will add each entrypoint fn to this
 
 
 _logger = logging.getLogger(__name__)
@@ -870,7 +870,7 @@ def _create_vision_transformer(variant, pretrained=False, **kwargs):
 @register_model
 def dcs_vit_small_patch16_224(pretrained=False, **kwargs):
     model_kwargs = dict(patch_size=16, embed_dim=384, depth=12, num_heads=6)
-    model = _create_vision_transformer('vit_small_patch16_224', pretrained=pretrained, **dict(model_kwargs, **kwargs))
+    model = _create_vision_transformer('dcs_vit_small_patch16_224', pretrained=pretrained, **dict(model_kwargs, **kwargs))
     return model
 
 
@@ -878,14 +878,14 @@ def dcs_vit_small_patch16_224(pretrained=False, **kwargs):
 @register_model
 def dcs_vit_base_patch32_384(pretrained=False, **kwargs):
     model_kwargs = dict(patch_size=32, embed_dim=768, depth=12, num_heads=12)
-    model = _create_vision_transformer('vit_base_patch32_384', pretrained=pretrained, **dict(model_kwargs, **kwargs))
+    model = _create_vision_transformer('dcs_vit_base_patch32_384', pretrained=pretrained, **dict(model_kwargs, **kwargs))
     return model
 
 
 @register_model
 def dcs_vit_base_patch16_224(pretrained=False, **kwargs):
     model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12)
-    model = _create_vision_transformer('vit_base_patch16_224', pretrained=pretrained, **dict(model_kwargs, **kwargs))
+    model = _create_vision_transformer('dcs_vit_base_patch16_224', pretrained=pretrained, **dict(model_kwargs, **kwargs))
     return model
 
 
@@ -893,6 +893,6 @@ def dcs_vit_base_patch16_224(pretrained=False, **kwargs):
 @register_model
 def dcs_vit_large_patch32_384(pretrained=False, **kwargs):
     model_kwargs = dict(patch_size=32, embed_dim=1024, depth=24, num_heads=16)
-    model = _create_vision_transformer('vit_large_patch32_384', pretrained=pretrained, **dict(model_kwargs, **kwargs))
+    model = _create_vision_transformer('dcs_vit_large_patch32_384', pretrained=pretrained, **dict(model_kwargs, **kwargs))
     return model
 
