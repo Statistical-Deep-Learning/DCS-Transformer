@@ -26,55 +26,88 @@ __all__ = ['DCS_VisionTransformer']  # model_registry will add each entrypoint f
 
 _logger = logging.getLogger(__name__)
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-class DCS_Attention(nn.Module):
-    fast_attn: Final[bool]
 
+class DCS_Attention_GS(nn.Module):
     def __init__(
-            self,
-            dim,
-            num_heads=8,
-            qkv_bias=False,
-            qk_norm=False,
-            attn_drop=0.,
-            proj_drop=0.,
-            norm_layer=nn.LayerNorm,
+        self,
+        dim,
+        num_heads=8,
+        qkv_bias=False,
+        qk_norm=False,
+        attn_drop=0.,
+        proj_drop=0.,
+        norm_layer=nn.LayerNorm,
+        init_tau=4.5,        # initial Gumbel temperature
     ):
         super().__init__()
-        assert dim % num_heads == 0, 'dim should be divisible by num_heads'
+
+        assert dim % num_heads == 0, "dim must be divisible by num_heads"
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         self.scale = self.head_dim ** -0.5
-        self.fast_attn = hasattr(torch.nn.functional, 'scaled_dot_product_attention')  # FIXME
+        self.tau = init_tau  # can be annealed externally
 
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        # QKV projection
+        self.qkv = nn.Linear(dim, 3 * dim, bias=qkv_bias)
         self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
         self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+
+        # Mask parameters θ (num_heads × head_dim)
+        self.theta = nn.Parameter(torch.randn(num_heads, self.head_dim))
+
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x):
+
+    def gumbel_sigmoid(self, logits, tau):
+        eps1 = torch.rand_like(logits)
+        eps2 = torch.rand_like(logits)
+        g_logit = (logits + torch.log(eps1) - torch.log(eps2)) / tau
+        return torch.sigmoid(g_logit)
+
+    def forward(self, x, tau=None):
+        """
+        x: (B, N, C)
+        tau: temperature for Gumbel annealing (optional)
+        """
+        tau = tau if tau is not None else self.tau
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+
+        # Compute Q, K, V: (B, num_heads, N, head_dim)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim)
+        qkv = qkv.permute(2, 0, 3, 1, 4)
         q, k, v = qkv.unbind(0)
+
+        # Normalize Q,K if enabled
         q, k = self.q_norm(q), self.k_norm(k)
-        if self.fast_attn:
-            x = F.scaled_dot_product_attention(
-                q, k, v,
-                dropout_p=self.attn_drop.p,
-            )
-        else:
-            q = q * self.scale
-            attn = q @ k.transpose(-2, -1)
 
-            attn = attn.softmax(dim=-1)
-            attn = self.attn_drop(attn)
-            x = attn @ v
+        # M_soft: differentiable mask
+        M_soft = self.gumbel_sigmoid(self.theta, tau)  # (H, D)
 
+        # Straight-through hard mask in forward
+        M_hard = (M_soft > 0.5).float()
+        M = M_hard + (M_soft - M_hard).detach()  # STE
+
+        M = M.unsqueeze(0).unsqueeze(2)
+
+        q = q * M
+        k = k * M
+
+        q = q * self.scale
+        attn = q @ k.transpose(-2, -1)   # (B, H, N, N)
+        attn = F.softmax(attn, dim=-1)
+        attn = self.attn_drop(attn)
+
+        x = attn @ v                    # (B, H, N, D)
         x = x.transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
+
+        # Output projection
+        x = self.proj_drop(self.proj(x))
         return x
 
 
@@ -154,7 +187,7 @@ class ResPostBlock(nn.Module):
         super().__init__()
         self.init_values = init_values
 
-        self.attn = DCS_Attention(
+        self.attn = DCS_Attention_GS(
             dim,
             num_heads=num_heads,
             qkv_bias=qkv_bias,
@@ -183,8 +216,8 @@ class ResPostBlock(nn.Module):
             nn.init.constant_(self.norm1.weight, self.init_values)
             nn.init.constant_(self.norm2.weight, self.init_values)
 
-    def forward(self, x):
-        x = x + self.drop_path1(self.norm1(self.attn(x)))
+    def forward(self, x, temp = 0.5):
+        x = x + self.drop_path1(self.norm1(self.attn(x, tau=temp)))
         x = x + self.drop_path2(self.norm2(self.mlp(x)))
         return x
 
